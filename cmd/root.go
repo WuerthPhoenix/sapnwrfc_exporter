@@ -33,7 +33,7 @@ type serverInfo struct {
 	conn *gorfc.Connection
 }
 
-// SystemInfo - system information
+// system information
 type SystemInfo struct {
 	Name   string
 	Usage  string
@@ -61,24 +61,31 @@ type tomlMetric struct {
 	FunctionModule string
 	Params         map[string]interface{}
 	TableData      TableInfo
+	RowData        RowInfo
 	FieldData      FieldInfo
 	StructureData  StructureInfo
 }
 
-// TableInfo - specific table metric info
+// specific table metric info
 type TableInfo struct {
 	Table     string
 	RowCount  map[string][]interface{}
 	RowFilter map[string][]interface{}
 }
 
-// FieldInfo - specific field metric info
+
+type RowInfo struct {
+	Table     string
+	RowFields []string
+}
+
+// specific field metric info
 type FieldInfo struct {
 	FieldLabels []string
 	FieldValues []string
 }
 
-// StructureInfo - specific structure metric info
+// specific structure metric info
 type StructureInfo struct {
 	ExportStructure string
 	StructureFields []string
@@ -101,7 +108,7 @@ type dataReceiver interface {
 	metricData(rawData map[string]interface{}, system SystemInfo, srvName string) []metricRecord
 }
 
-// Config - information for the whole process
+// config information for the whole process
 type Config struct {
 	Secret     []byte
 	Systems    []SystemInfo // system info from toml file
@@ -136,7 +143,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.hana_sql_exporter.toml)")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.sapnwrfc_exporter.toml)")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -236,8 +243,9 @@ func checkTomlMetric(tm tomlMetric) (metricInfo, error) {
 	}
 
 	var data []dataReceiver
-	for _, d := range []dataReceiver{&tm.FieldData, &tm.TableData, &tm.StructureData} {
+	for _, d := range []dataReceiver{&tm.FieldData, &tm.TableData, &tm.RowData, &tm.StructureData} {
 		if d.checkSpecialData() {
+			fmt.Println("Data is ", d)
 			data = append(data, d)
 		}
 	}
@@ -312,6 +320,7 @@ func (si *StructureInfo) checkSpecialData() bool {
 
 // check toml metric table data
 func (ti *TableInfo) checkSpecialData() bool {
+
 	if 0 == len(ti.Table) && 0 == len(ti.RowCount) && 0 == len(ti.RowFilter) {
 		return false
 	}
@@ -322,17 +331,38 @@ func (ti *TableInfo) checkSpecialData() bool {
 	}
 
 	log.WithFields(log.Fields{
-		"Table":    ti.Table,
-		"RowCount": ti.RowCount,
-	}).Error("TableInfo: one or both entries missing")
+		"Table":      ti.Table,
+		"RowCount":   ti.RowCount,
+	}).Error("TableInfo: one or more entries missing")
 	return false
 }
+
+
+// check toml metric table data
+func (tfi *RowInfo) checkSpecialData() bool {
+	if 0 == len(tfi.Table) && len(tfi.RowFields) > 0 {
+		return false
+	}
+
+	if len(tfi.RowFields) > 0 {
+		return true
+	}
+
+	/*
+	log.WithFields(log.Fields{
+	    "Table": tfi.Table,
+	    "RowFields": tfi.RowFields,
+	}).Error("RowInfo: entry missing") */
+
+	return false
+}
+
 
 // check toml metric systems data
 func (config *Config) checkTomlSystems() error {
 	for i := range config.Systems {
 
-		if 0 == len(config.Systems[i].Name) || 0 == len(config.Systems[i].Usage) || 0 == len(config.Systems[i].User) || 0 == len(config.Systems[i].Lang) || 0 == len(config.Systems[i].Client) || 0 == len(config.Systems[i].Server) || 0 == len(config.Systems[i].Sysnr) {
+		if 0 == len(config.Systems[i].Name) || 0 == len(config.Systems[i].Usage) || 0 == len(config.Systems[i].User) || 0 == len(config.Systems[i].Lang) || 0 == len(config.Systems[i].Client) || ((0 == len(config.Systems[i].Server) || 0 == len(config.Systems[i].Sysnr)) == (0 == len(config.Systems[i].Msserv) || 0 == len(config.Systems[i].Group) || 0 == len(config.Systems[i].Mshost))) {
 			log.WithFields(log.Fields{
 				"name":   config.Systems[i].Name,
 				"usage":  config.Systems[i].Usage,
@@ -341,6 +371,9 @@ func (config *Config) checkTomlSystems() error {
 				"client": config.Systems[i].Client,
 				"server": config.Systems[i].Server,
 				"sysnr":  config.Systems[i].Sysnr,
+				"msserv": config.Systems[i].Msserv,
+				"mshost": config.Systems[i].Mshost,
+				"group":  config.Systems[i].Group,
 			}).Error("missing mandatory system field(s)")
 			return errors.New("checkTomlSystems(mandatory fields)")
 		}
@@ -348,6 +381,7 @@ func (config *Config) checkTomlSystems() error {
 		config.Systems[i].Name = low(config.Systems[i].Name)
 		config.Systems[i].Usage = low(config.Systems[i].Usage)
 		config.Systems[i].Server = low(config.Systems[i].Server)
+		config.Systems[i].Mshost = low(config.Systems[i].Mshost)
 	}
 
 	return nil
@@ -429,6 +463,18 @@ func inFilter(line map[string]interface{}, filter map[string][]interface{}) bool
 			}
 		}
 	}
+	return false
+}
+
+
+func inFieldValues(line map[string]interface{}, rowFields []string) bool {
+
+	for _, field := range rowFields {
+		if _, ok := line[up(field)]; ok {
+			return true
+		}
+	}
+
 	return false
 }
 

@@ -246,21 +246,17 @@ func (config *Config) collectSystemsMetric(mPos int) []metricRecord {
 
 			// all values of Metrics.TagFilter must be in Tenants.Tags, otherwise the
 			// metric is not relevant for the tenant
-			if !subSliceInSlice(config.IntMetrics[mPos].TagFilter, config.Systems[sPos].Tags) {
+			if subSliceInSlice(config.IntMetrics[mPos].TagFilter, config.Systems[sPos].Tags) {
+				servers := config.getSrvInfo(mPos, sPos)
+				if servers != nil {
+					for _, srv := range servers {
+						defer srv.conn.Close()
+					}
+					mRecordsC <- config.collectServersMetric(mPos, sPos, servers)
+				}
+			} else {
 				mRecordsC <- nil
-				return
 			}
-
-			servers := config.getSrvInfo(mPos, sPos)
-			if servers == nil {
-				mRecordsC <- nil
-				return
-			}
-
-			for _, srv := range servers {
-				defer srv.conn.Close()
-			}
-			mRecordsC <- config.collectServersMetric(mPos, sPos, servers)
 		}(sPos)
 	}
 
@@ -310,6 +306,36 @@ func (config *Config) collectServersMetric(mPos, sPos int, servers []serverInfo)
 	return srvData
 }
 
+// func (config *Config) collectServersMetric(ctx context.Context, mPos, sPos int, servers []serverInfo) []metricRecord {
+
+// 	srvCnt := len(servers)
+// 	mRecordsC := make(chan []metricRecord, srvCnt)
+
+// 	for _, srv := range servers {
+
+// 		go func(srv serverInfo) {
+// 			mRecordsC <- config.getRfcData(mPos, sPos, srv)
+// 		}(srv)
+// 	}
+
+// 	var srvData []metricRecord
+// 	for i := 0; i < srvCnt; i++ {
+// 		select {
+// 		case mc := <-mRecordsC:
+
+// 			// ????????????? check
+// 			// if mc != nil {
+// 			srvData = append(srvData, mc...)
+// 			// mData = append(mData, mc)
+// 			// }
+// 		case <-ctx.Done():
+// 			return srvData
+// 		}
+// 	}
+
+// 	return srvData
+// }
+
 // get data from sap system
 func (config *Config) getRfcData(mPos, sPos int, srv serverInfo) []metricRecord {
 
@@ -340,6 +366,7 @@ func (config *Config) getRfcData(mPos, sPos int, srv serverInfo) []metricRecord 
 }
 
 // retrieve table data
+/*
 func (tMetric TableInfo) metricData(rawData map[string]interface{}, system SystemInfo, srvName string) []metricRecord {
 
 	if rawData[up(tMetric.Table)] == nil {
@@ -351,10 +378,86 @@ func (tMetric TableInfo) metricData(rawData map[string]interface{}, system Syste
 		return nil
 	}
 
+
+	for k, v := range rawData[up(tMetric.Table)].([]interface{}) {
+		fmt.Println("Table is: ", tMetric.Table)
+		fmt.Println("RowFields is ", tMetric.RowFields)
+		if tMetric.Table == "TF_MEM_ALL" {
+			fmt.Println(k, "value is", v)
+		}
+	}
+
 	var md []metricRecord
 	count := make(map[string]float64)
+	//fieldValues := make(map[string]interface{})
 
 	for _, res := range rawData[up(tMetric.Table)].([]interface{}) {
+		line := res.(map[string]interface{})
+
+		if len(tMetric.RowFilter) == 0 || inFilter(line, tMetric.RowFilter) {
+			//fmt.Println("RowCount is ", tMetric.RowCount)
+			for field, values := range tMetric.RowCount {
+				//fmt.Println("RowCount values are: ", values)
+				for _, value := range values {
+					namePart := low(interface2String(value))
+					if "" == namePart {
+						log.WithFields(log.Fields{
+							"value":  namePart,
+							"system": system.Name,
+						}).Error("Configfile RowCount: only string and int types are allowed")
+						continue
+					}
+
+					if strings.HasPrefix(low(interface2String(line[up(field)])), namePart) || "total" == namePart {
+						count[low(field)+"_"+namePart]++
+					}
+				}
+			}
+		}	
+	}
+
+	//fmt.Println("Our custom field is", fieldValues)
+
+	for field, values := range tMetric.RowCount {
+		for _, value := range values {
+			namePart := low(interface2String(value))
+
+			data := metricRecord{
+				labels: []string{"system", "usage", "server"},
+				// !!!!! low noetig?
+				labelValues: []string{system.Name, system.Usage, srvName, low(field + "_" + namePart)},
+				value:       count[low(field)+"_"+namePart],
+			}
+			md = append(md, data)
+		}
+	}
+	return md
+}
+*/
+
+
+func (tMetric TableInfo) metricData(rawData map[string]interface{}, system SystemInfo, srvName string) []metricRecord {
+    if rawData[up(tMetric.Table)] == nil {
+        log.WithFields(log.Fields{
+            "system": system.Name,
+            "server": srvName,
+            "table":  tMetric.Table,
+        }).Error("metricData: no results for table")
+        return nil
+    }
+    
+    var md []metricRecord
+    count := make(map[string]float64)
+    /*
+    for k, v := range rawData[up(tMetric.Table)].([]interface{}) {
+                if tMetric.Table == "TF_MEM_ALL" {
+     //           	fmt.Println("RowFields is ", tMetric.RowFields)
+                	fmt.Println("Table is: ", tMetric.Table)
+                        fmt.Println(k, "value is", v)
+                }
+        }
+    */
+    for _, res := range rawData[up(tMetric.Table)].([]interface{}) {
 		line := res.(map[string]interface{})
 
 		if len(tMetric.RowFilter) == 0 || inFilter(line, tMetric.RowFilter) {
@@ -375,6 +478,29 @@ func (tMetric TableInfo) metricData(rawData map[string]interface{}, system Syste
 				}
 			}
 		}
+		/*
+		if len(tMetric.RowFields) > 0 || inFieldValues(line, tMetric.RowFields) {
+			labels := []string{"system", "usage", "server"}
+			labelValues := []string{system.Name, system.Usage, srvName}
+
+			for _, field := range tMetric.RowFields {
+				if _, ok := line[up(field)]; ok {
+					labels = append(labels, low(field))
+					labelValues = append(labelValues, interface2String(line[up(field)]))
+				}
+			}
+
+			fmt.Println("Labels are ", labels)
+			fmt.Println("LabelValues are ", labelValues)
+
+			data := metricRecord{
+				labels:      labels,
+				labelValues: labelValues,
+				value:       0,
+			}
+			data = data
+			//md = append(md, data)
+		}*/
 	}
 
 	for field, values := range tMetric.RowCount {
@@ -390,6 +516,61 @@ func (tMetric TableInfo) metricData(rawData map[string]interface{}, system Syste
 			md = append(md, data)
 		}
 	}
+
+
+    return md
+}
+
+
+func (tFVMetric RowInfo) metricData(rawData map[string]interface{}, system SystemInfo, srvName string) []metricRecord {
+	if rawData[up(tFVMetric.Table)] == nil {
+		log.WithFields(log.Fields{
+			"system": system.Name,
+			"server": srvName,
+			"table":  tFVMetric.Table,
+		}).Error("metricData: no results for table")
+		return nil
+	}
+        fmt.Println("I am Inside new Function")
+	var md []metricRecord
+
+	for _, res := range rawData[up(tFVMetric.Table)].([]interface{}) {
+
+		if tFVMetric.Table == "TF_MEM_ALL" {
+			fmt.Println("RowFields is ", tFVMetric.RowFields)
+			fmt.Println("Table is: ", tFVMetric.Table)
+			fmt.Println("value is", res)
+		}
+
+		line := res.(map[string]interface{})
+
+		if len(tFVMetric.RowFields) >= 0 || inFieldValues(line, tFVMetric.RowFields) {
+			labels := []string{"system", "usage", "server"}
+			labelValues := []string{system.Name, system.Usage, srvName}
+
+			for _, field := range tFVMetric.RowFields {
+				if _, ok := line[up(field)]; ok {
+					labels = append(labels, field)
+					labelValues = append(labelValues, interface2String(line[up(field)]))
+				}
+			}
+
+			fmt.Println("Labels are ", labels)
+			fmt.Println("LabelValues are ", labelValues)
+
+			data := metricRecord{
+				labels:      labels,
+				labelValues: labelValues,
+				value:       0,
+			}
+
+			md = append(md, data)
+		}else{
+			fmt.Println("Not in ", tFVMetric.Table)
+		}
+
+	}
+
 	return md
 }
 
@@ -548,7 +729,7 @@ func (config *Config) getSrvInfo(mPos, sPos int) []serverInfo {
 
 	// Issue 5 why is r["LIST"] == nil ?????
 	if r["LIST"] == nil {
-		return []serverInfo{{config.Systems[sPos].Name, c}}
+		return []serverInfo{serverInfo{config.Systems[sPos].Name, c}}
 	}
 	srvCnt := len(r["LIST"].([]interface{}))
 
@@ -556,7 +737,7 @@ func (config *Config) getSrvInfo(mPos, sPos int) []serverInfo {
 	// or if all servers are needed but only one server exists
 	// -> return the standard connection. it will be closed in getRfcData.
 	if !config.Metrics[mPos].AllServers || 1 == srvCnt {
-		return []serverInfo{{config.Systems[sPos].Name, c}}
+		return []serverInfo{serverInfo{config.Systems[sPos].Name, c}}
 	}
 
 	// if more servers exists, they get their own connection below
@@ -572,9 +753,6 @@ func (config *Config) getSrvInfo(mPos, sPos int) []serverInfo {
 			defer wg.Done()
 
 			appl := v.(map[string]interface{})
-			if _, ok := appl["NAME"]; !ok {
-				return
-			}
 			info := strings.Split(strings.TrimSpace(appl["NAME"].(string)), "_")
 
 			sys := config.Systems[sPos]
