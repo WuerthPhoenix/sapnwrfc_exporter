@@ -73,7 +73,6 @@ type TableInfo struct {
 	RowFilter map[string][]interface{}
 }
 
-
 type RowInfo struct {
 	Table     string
 	RowFields []string
@@ -245,7 +244,6 @@ func checkTomlMetric(tm tomlMetric) (metricInfo, error) {
 	var data []dataReceiver
 	for _, d := range []dataReceiver{&tm.FieldData, &tm.TableData, &tm.RowData, &tm.StructureData} {
 		if d.checkSpecialData() {
-			fmt.Println("Data is ", d)
 			data = append(data, d)
 		}
 	}
@@ -331,12 +329,11 @@ func (ti *TableInfo) checkSpecialData() bool {
 	}
 
 	log.WithFields(log.Fields{
-		"Table":      ti.Table,
-		"RowCount":   ti.RowCount,
+		"Table":    ti.Table,
+		"RowCount": ti.RowCount,
 	}).Error("TableInfo: one or more entries missing")
 	return false
 }
-
 
 // check toml metric table data
 func (tfi *RowInfo) checkSpecialData() bool {
@@ -349,14 +346,13 @@ func (tfi *RowInfo) checkSpecialData() bool {
 	}
 
 	/*
-	log.WithFields(log.Fields{
-	    "Table": tfi.Table,
-	    "RowFields": tfi.RowFields,
-	}).Error("RowInfo: entry missing") */
+		log.WithFields(log.Fields{
+		    "Table": tfi.Table,
+		    "RowFields": tfi.RowFields,
+		}).Error("RowInfo: entry missing") */
 
 	return false
 }
-
 
 // check toml metric systems data
 func (config *Config) checkTomlSystems() error {
@@ -465,7 +461,6 @@ func inFilter(line map[string]interface{}, filter map[string][]interface{}) bool
 	}
 	return false
 }
-
 
 func inFieldValues(line map[string]interface{}, rowFields []string) bool {
 
