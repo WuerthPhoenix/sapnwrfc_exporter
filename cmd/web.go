@@ -398,16 +398,16 @@ func (tFVMetric RowInfo) metricData(rawData map[string]interface{}, system Syste
 		}).Error("metricData: no results for table")
 		return nil
 	}
-	fmt.Println("I am Inside new Function")
+	// fmt.Println("I am Inside new Function")
 	var md []metricRecord
 
 	for _, res := range rawData[up(tFVMetric.Table)].([]interface{}) {
 
-		if tFVMetric.Table == "TF_MEM_ALL" {
-			fmt.Println("RowFields is ", tFVMetric.RowFields)
-			fmt.Println("Table is: ", tFVMetric.Table)
-			fmt.Println("value is", res)
-		}
+		// if tFVMetric.Table == "TF_MEM_ALL" {
+		// 	fmt.Println("RowFields is ", tFVMetric.RowFields)
+		// 	fmt.Println("Table is: ", tFVMetric.Table)
+		// 	fmt.Println("value is", res)
+		// }
 
 		line := res.(map[string]interface{})
 
@@ -422,8 +422,8 @@ func (tFVMetric RowInfo) metricData(rawData map[string]interface{}, system Syste
 				}
 			}
 
-			fmt.Println("Labels are ", labels)
-			fmt.Println("LabelValues are ", labelValues)
+			// fmt.Println("Labels are ", labels)
+			// fmt.Println("LabelValues are ", labelValues)
 
 			data := metricRecord{
 				labels:      labels,
